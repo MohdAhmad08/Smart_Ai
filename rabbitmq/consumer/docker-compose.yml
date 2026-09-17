@@ -1,0 +1,44 @@
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    env_file:
+      - ../../.env
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUX_DB_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_DB_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_DB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_DB_BUCKET_NS}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_DB_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scada_consumer
+    env_file:
+      - ../../.env
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  influxdb-data:

@@ -1,0 +1,10 @@
+services:
+  publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scada-publisher
+    env_file: ../../../.env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

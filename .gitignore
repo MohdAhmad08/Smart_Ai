@@ -1,0 +1,56 @@
+# ── Python virtual environments ──────────────────────────────────────────────
+myenv/
+.venv/
+venv/
+env/
+
+# ── Python cache / compiled files ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# ── Python packaging / eggs ──────────────────────────────────────────────────
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Node / frontend ───────────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.local
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Temporary / scratch files ────────────────────────────────────────────────
+*.tmp
+_explore.py
+
+*.json
+*.parquet

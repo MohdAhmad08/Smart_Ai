@@ -1,0 +1,139 @@
+# Full-stack deployment (Plan 03 Part G).
+#   cp .env.example .env    # then edit credentials
+#   docker compose up -d --build
+#
+# Services: MySQL (store) · RabbitMQ (transport) · consumer (ingest)
+#           generator (live telemetry) · backend (API + model serving)
+#           mlflow (tracking/registry UI) · scheduler (seal/retrain/drift/feedback)
+#           frontend (dashboard behind nginx)
+services:
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: machine_telemetry
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_MQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_MQ_PASSWORD:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  consumer:
+    build: ./rabbitmq/consumer
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/machine_telemetry?charset=utf8mb4}
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: "5672"
+      RABBIT_MQ_USER: ${RABBIT_MQ_USER:-guest}
+      RABBIT_MQ_PASSWORD: ${RABBIT_MQ_PASSWORD:-guest}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  generator:
+    build: ./rabbitmq/producer/publisher
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/machine_telemetry?charset=utf8mb4}
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: "5672"
+      RABBIT_MQ_USER: ${RABBIT_MQ_USER:-guest}
+      RABBIT_MQ_PASSWORD: ${RABBIT_MQ_PASSWORD:-guest}
+      GEN_MACHINES: ${GEN_MACHINES:-5}
+      GEN_ACCEL: ${GEN_ACCEL:-0.4}
+      PYTHONUTF8: "1"
+    depends_on:
+      consumer:
+        condition: service_started
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/machine_telemetry?charset=utf8mb4}
+      PYTHONUTF8: "1"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ml-model-store:/app/ml/model_store
+      - ml-artifacts:/app/ml/artifacts
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflowdata:/mlflow
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: ml/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/machine_telemetry?charset=utf8mb4}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PROMOTE_MODE: ${PROMOTE_MODE:-auto}
+      PYTHONUTF8: "1"
+    volumes:
+      - ml-feature-store:/app/ml/feature_store
+      - ml-model-store:/app/ml/model_store
+      - ml-artifacts:/app/ml/artifacts
+      - ml-cache:/app/ml/cache
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  mysqldata: {}
+  mlflowdata: {}
+  ml-feature-store: {}
+  ml-model-store: {}
+  ml-artifacts: {}
+  ml-cache: {}

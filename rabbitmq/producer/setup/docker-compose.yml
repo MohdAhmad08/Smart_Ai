@@ -1,0 +1,46 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "0.0.0.0:5672:5672"      # Bind to all interfaces
+      - "0.0.0.0:15672:15672"    # Bind to all interfaces
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    networks:
+      - rabbitnet
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  setup-rabbitmq:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rabbitmq-setup
+    environment:
+      RABBIT_MQ_USER: guest
+      RABBIT_MQ_PASSWORD: guest
+      RABBIT_MQ_HOST: rabbitmq
+      RABBIT_MQ_PORT: 5672
+      RABBIT_MQ_EXCHANGE: scada_data
+      RABBIT_MQ_QUEUE: scada_data_queue
+      RABBIT_MQ_ROUTING_KEY: scada.tag.data
+      RABBIT_MQ_HEALTH_DATA_QUEUE: sensor_health_data_queue
+      RABBIT_MQ_HEALTH_DATA_ROUTING_KEY: scada.sensor.health
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - rabbitnet
+    restart: "no"
+
+networks:
+  rabbitnet:
+    driver: bridge
